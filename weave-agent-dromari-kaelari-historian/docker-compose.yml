@@ -10,6 +10,7 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_MODEL=llama3.2
       - OPENAI_BASE_URL=http://host.docker.internal:11434/v1
       - OPENAI_API_KEY=ollama
       - OLLAMA_NATIVE=1

@@ -49,7 +49,10 @@ Remember: You are a historian, not a storyteller. Accuracy and source citation a
   private readonly ollamaBaseUrl: string;
   private readonly modelName: string;
 
-  constructor(ollamaBaseUrl = 'http://host.docker.internal:11434', modelName = 'llama3') {
+  constructor(
+    ollamaBaseUrl = process.env.OLLAMA_BASE_URL || 'http://host.docker.internal:11434', 
+    modelName = process.env.OLLAMA_MODEL || 'llama3.2'
+  ) {
     this.ollamaBaseUrl = ollamaBaseUrl;
     this.modelName = modelName;
   }

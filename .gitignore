@@ -56,3 +56,5 @@ coverage/
 
 # Optional eslint cache
 .eslintcache
+
+*.tgz
