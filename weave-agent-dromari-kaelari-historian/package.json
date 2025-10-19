@@ -1,0 +1,40 @@
+{
+  "name": "weave-agent-dromari-kaelari-historian",
+  "version": "1.0.0",
+  "description": "Kaelari Historian AI Agent with MCP Server",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "watch": "tsc --watch",
+    "clean": "rm -rf dist",
+    "docker:build": "docker build -t kaelari-historian .",
+    "docker:run": "docker run -p 3000:3000 --network host kaelari-historian",
+    "docker:dev": "docker-compose up --build"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "mcp",
+    "historian",
+    "kaelari",
+    "lore"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.20.1",
+    "@openai/agents": "^0.1.10",
+    "express": "^4.18.2",
+    "ws": "^8.14.2",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.0",
+    "@types/ws": "^8.5.10",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.3.0"
+  }
+}

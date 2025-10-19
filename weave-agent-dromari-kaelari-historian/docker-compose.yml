@@ -1,0 +1,50 @@
+services:
+  kaelari-historian:
+    build: 
+      context: ..
+      dockerfile: weave-agent-dromari-kaelari-historian/Dockerfile
+    container_name: kaelari-historian
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OPENAI_BASE_URL=http://host.docker.internal:11434/v1
+      - OPENAI_API_KEY=ollama
+      - OLLAMA_NATIVE=1
+    networks:
+      - weave-network
+    volumes:
+      # Mount the vector database (with write access for SQLite temp files)
+      - ./db:/app/db
+      # Mount lore files (read-only for reference)
+      - ./data:/app/data:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  weave-network:
+    driver: bridge
+
+# If you want to include Ollama in the compose (optional)
+# Uncomment the following if you don't have Ollama running on the host
+#
+# ollama:
+#   image: ollama/ollama:latest
+#   container_name: ollama
+#   ports:
+#     - "11434:11434"
+#   volumes:
+#     - ollama_data:/root/.ollama
+#   networks:
+#     - weave-network
+#   restart: unless-stopped
+#
+# volumes:
+#   ollama_data:
