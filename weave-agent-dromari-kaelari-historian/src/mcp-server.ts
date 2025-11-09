@@ -88,7 +88,6 @@ export class KaelariHistorianMCPServer {
             answer: response.answer,
             confidence: response.confidence,
             sources: response.sources,
-            speculation: response.speculation || null,
             total_sources: response.sources.length
           };
 

@@ -1,11 +1,10 @@
 // src/agent.ts
-// Kaelari Historian AI Agent implementation
+// Kaelari Historian AI Agent - True Autonomous Function Calling
 
 import { lookupLore, LoreLookupParams, LoreLookupResult } from './tools';
 
 export interface KaelariHistorianQuery {
   question: string;
-  context?: string;
 }
 
 export interface KaelariHistorianResponse {
@@ -13,44 +12,43 @@ export interface KaelariHistorianResponse {
   sources: Array<{
     title: string;
     section: string;
-    relevance: string;
+    relevance: number;
     path: string;
   }>;
   confidence: 'high' | 'medium' | 'low';
-  speculation?: string;
+}
+
+interface OllamaMessage {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
+}
+
+interface ToolCall {
+  function: {
+    name: string;
+    arguments: any;
+  };
+}
+
+interface OllamaChatResponse {
+  content?: string;
+  tool_calls?: ToolCall[];
 }
 
 /**
- * Kaelari Historian Agent
+ * Kaelari Historian Agent - True Autonomous Research Assistant
  * 
- * Acts as a knowledgeable historian of the Kaelari people, providing factual
- * information based on the lore database. Prioritizes accuracy and clearly
- * distinguishes between established facts and speculation.
+ * This agent uses Ollama's native function calling capabilities to
+ * autonomously decide when and how to query the vector database.
  */
 export class KaelariHistorian {
-  private readonly systemPrompt = `You are a knowledgeable historian specializing in the Kaelari, a subspecies of the Dromari people in the Weave universe. 
-
-Your role is to:
-1. Provide ACCURATE information based solely on the lore database
-2. NEVER hallucinate or invent facts not present in the sources
-3. When uncertain, search the database multiple times with different queries
-4. Clearly distinguish between established facts and your scholarly speculation
-5. Always cite your sources by referencing the section titles and paths
-6. If information is not available, state this clearly rather than guessing
-
-Response format:
-- Start with direct factual answers based on the sources
-- Include relevant details from the database
-- End with speculation (if any) clearly marked as "SPECULATION:"
-- Always provide source citations
-
-Remember: You are a historian, not a storyteller. Accuracy and source citation are paramount.`;
-
   private readonly ollamaBaseUrl: string;
   private readonly modelName: string;
 
   constructor(
-    ollamaBaseUrl = process.env.OLLAMA_BASE_URL || 'http://host.docker.internal:11434', 
+    ollamaBaseUrl = process.env.OLLAMA_BASE_URL || 'http://host.docker.internal:11434',
     modelName = process.env.OLLAMA_MODEL || 'llama3.2'
   ) {
     this.ollamaBaseUrl = ollamaBaseUrl;
@@ -58,35 +56,21 @@ Remember: You are a historian, not a storyteller. Accuracy and source citation a
   }
 
   /**
-   * Process a query about Kaelari lore
+   * Process a query about Kaelari lore autonomously using function calling
    */
   async query(input: KaelariHistorianQuery): Promise<KaelariHistorianResponse> {
     try {
-      console.log(`[Kaelari Historian] Processing query: "${input.question}"`);
-      
-      // Step 1: Initial search based on the question
-      const initialSearch = await this.performSearch(input.question);
-      
-      // Step 2: Analyze initial results and determine if additional searches are needed
-      const additionalSearches = await this.planAdditionalSearches(input.question, initialSearch);
-      
-      // Step 3: Perform additional searches if needed
-      const allResults: LoreLookupResult[] = [initialSearch];
-      for (const searchQuery of additionalSearches) {
-        const result = await this.performSearch(searchQuery);
-        allResults.push(result);
-      }
+      console.log(`[Kaelari Historian] Processing autonomous query: "${input.question}"`);
 
-      // Step 4: Synthesize the response using the LLM
-      const response = await this.synthesizeResponse(input.question, allResults);
-      
-      console.log(`[Kaelari Historian] Query completed successfully`);
+      const response = await this.conductAutonomousResearch(input.question);
+
+      console.log(`[Kaelari Historian] Autonomous query completed successfully`);
       return response;
 
     } catch (error) {
-      console.error('[Kaelari Historian] Error processing query:', error);
+      console.error('[Kaelari Historian] Error processing autonomous query:', error);
       return {
-        answer: "I apologize, but I encountered an error while searching the lore database. Please try rephrasing your question.",
+        answer: "I apologize, but I encountered an error while researching your question. Please try rephrasing your question.",
         sources: [],
         confidence: 'low'
       };
@@ -94,186 +78,219 @@ Remember: You are a historian, not a storyteller. Accuracy and source citation a
   }
 
   /**
-   * Perform a search in the lore database
+   * Conduct autonomous research using Ollama's native function calling
    */
-  private async performSearch(query: string, options?: Partial<LoreLookupParams>): Promise<LoreLookupResult> {
-    const searchParams: LoreLookupParams = {
-      query,
-      maxResults: 5,
-      ...options
-    };
+  private async conductAutonomousResearch(question: string): Promise<KaelariHistorianResponse> {
+    const systemPrompt = `You are the Kaelari Historian, a specialized AI assistant with deep knowledge of the Kaelari civilization. You are an autonomous agent that can independently research and gather information to answer questions.
 
-    return await lookupLore(searchParams);
-  }
+Your role is to:
+1. Analyze user questions about Kaelari civilization
+2. Independently determine what information you need to answer thoroughly
+3. Use the search_lore function to gather relevant information from the database
+4. You may call search_lore multiple times with different queries if needed
+5. Synthesize comprehensive responses based on your research
+6. Cite sources clearly and maintain scholarly accuracy
 
-  /**
-   * Determine if additional searches are needed based on initial results
-   */
-  private async planAdditionalSearches(originalQuery: string, initialResults: LoreLookupResult): Promise<string[]> {
-    const additionalSearches: string[] = [];
+When responding:
+- First determine what information you need to answer the question thoroughly
+- Use the search_lore function autonomously to gather relevant data
+- Make multiple searches with different queries if needed for comprehensive coverage
+- Always cite your sources by referencing document title and section
+- Be comprehensive but concise
+- Distinguish between confirmed facts and reasonable speculation
+- If multiple sources conflict, acknowledge the discrepancy
 
-    // If we got very few results, try broader searches
-    if (!initialResults.results || initialResults.results.length < 2) {
-      // Extract key terms and search for them individually
-      const keyTerms = this.extractKeyTerms(originalQuery);
-      additionalSearches.push(...keyTerms.slice(0, 2)); // Limit to 2 additional searches
-    }
+You have access to the search_lore function - use it whenever you need information from the database.`;
 
-    // If results seem incomplete, try related searches
-    if (initialResults.results && initialResults.results.length > 0) {
-      const concepts = initialResults.results.flatMap(r => r.concepts).slice(0, 3);
-      if (concepts.length > 0) {
-        additionalSearches.push(concepts[0]); // Search for the top concept
+    const tools = [
+      {
+        type: 'function',
+        function: {
+          name: 'search_lore',
+          description: 'Search the Kaelari lore database for information about their culture, history, governance, beliefs, technology, and society',
+          parameters: {
+            type: 'object',
+            properties: {
+              query: {
+                type: 'string',
+                description: 'The search query to find relevant information in the lore database'
+              },
+              maxResults: {
+                type: 'number',
+                description: 'Maximum number of results to return (default: 5)',
+                default: 5
+              }
+            },
+            required: ['query']
+          }
+        }
+      }
+    ];
+
+    const messages: OllamaMessage[] = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: question }
+    ];
+
+    let allSources: any[] = [];
+    let maxIterations = 10;
+    let iteration = 0;
+
+    while (iteration < maxIterations) {
+      iteration++;
+
+      try {
+        console.log(`[Autonomous Agent] Research iteration ${iteration}`);
+
+        const response = await this.callOllamaChatWithTools(messages, tools);
+
+        if (response.tool_calls && response.tool_calls.length > 0) {
+          let hasValidToolCall = false;
+
+          for (const toolCall of response.tool_calls) {
+            if (toolCall.function.name === 'search_lore') {
+              console.log(`[Autonomous Agent] Making tool call: search_lore(${JSON.stringify(toolCall.function.arguments)})`);
+
+              const toolResult = await this.executeSearchTool(toolCall.function.arguments);
+              if (toolResult.success && toolResult.result?.results) {
+                allSources.push(...toolResult.result.results);
+                hasValidToolCall = true;
+              }
+
+              messages.push({
+                role: 'assistant',
+                content: response.content || '',
+                tool_calls: [toolCall]
+              });
+
+              messages.push({
+                role: 'tool',
+                content: JSON.stringify(toolResult),
+                tool_call_id: toolCall.function.name
+              });
+            }
+          }
+
+          if (!hasValidToolCall) {
+            console.log('[Autonomous Agent] No valid tool calls, ending research');
+            break;
+          }
+        } else {
+          console.log('[Autonomous Agent] Received final answer from agent');
+          return {
+            answer: response.content || 'I was unable to generate a response.',
+            sources: this.formatSources(allSources),
+            confidence: this.assessConfidenceFromSources(allSources)
+          };
+        }
+      } catch (error) {
+        console.error('[Autonomous Agent] Error during research iteration:', error);
+        break;
       }
     }
 
-    return additionalSearches.slice(0, 2); // Limit total additional searches
-  }
+    console.log(`[Autonomous Agent] Reached max iterations, requesting final synthesis`);
+    messages.push({
+      role: 'user',
+      content: `Based on all the information you've gathered from your searches, please provide a comprehensive final answer to the original question: "${question}". Do not make any more tool calls - just synthesize your research into a complete response.`
+    });
 
-  /**
-   * Extract key terms from a query
-   */
-  private extractKeyTerms(query: string): string[] {
-    // Simple keyword extraction - could be enhanced with NLP
-    const stopWords = new Set(['what', 'how', 'when', 'where', 'why', 'who', 'are', 'is', 'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by']);
-    const words = query.toLowerCase().split(/\s+/).filter(word => 
-      word.length > 2 && !stopWords.has(word)
-    );
-    return words.slice(0, 3); // Return top 3 terms
-  }
-
-  /**
-   * Synthesize a response using the LLM based on search results
-   */
-  private async synthesizeResponse(question: string, searchResults: LoreLookupResult[]): Promise<KaelariHistorianResponse> {
-    // Compile all successful results
-    const allResults = searchResults
-      .filter(r => r.success && r.results)
-      .flatMap(r => r.results!)
-      .slice(0, 10); // Limit to top 10 most relevant results
-
-    if (allResults.length === 0) {
+    try {
+      const finalResponse = await this.callOllamaChatWithTools(messages, []);
       return {
-        answer: "I could not find any information about this topic in the Kaelari lore database. The records may not contain details about this specific subject.",
-        sources: [],
+        answer: finalResponse.content || 'I was unable to generate a final response.',
+        sources: this.formatSources(allSources),
+        confidence: this.assessConfidenceFromSources(allSources)
+      };
+    } catch (error) {
+      return {
+        answer: `Based on my research of ${allSources.length} sources, I encountered an issue completing the full analysis. Please try asking a more specific question.`,
+        sources: this.formatSources(allSources),
         confidence: 'low'
       };
     }
+  }
 
-    // Build context for the LLM
-    const context = allResults.map((result, index) => `
-SOURCE ${index + 1}: ${result.title} (${result.section})
-RELEVANCE: ${result.relevance_score}
-CONTENT: ${result.chunk}
----`).join('\n');
-
-    // Call the LLM
-    const prompt = `${this.systemPrompt}
-
-QUESTION: ${question}
-
-AVAILABLE SOURCES:
-${context}
-
-Please provide a comprehensive answer based ONLY on the provided sources. Include source citations and clearly mark any speculation.`;
-
+  private async executeSearchTool(args: any): Promise<{ success: boolean, result?: any, error?: string }> {
     try {
-      const llmResponse = await this.callOllama(prompt);
-      
-      // Extract confidence level from response (simple heuristic)
-      const confidence = this.assessConfidence(llmResponse, allResults);
-      
-      return {
-        answer: llmResponse,
-        sources: allResults.map(r => ({
-          title: r.title,
-          section: r.section,
-          relevance: r.relevance_score,
-          path: r.path
-        })),
-        confidence
+      const searchParams: LoreLookupParams = {
+        query: args.query,
+        maxResults: Math.max(1, args.maxResults || 5) // Ensure at least 1 result
       };
 
+      const result = await lookupLore(searchParams);
+
+      return {
+        success: result.success,
+        result: result
+      };
     } catch (error) {
-      console.error('[Kaelari Historian] LLM call failed:', error);
-      
-      // Fallback: provide a basic factual summary
-      const fallbackAnswer = this.createFallbackResponse(question, allResults);
       return {
-        answer: fallbackAnswer,
-        sources: allResults.map(r => ({
-          title: r.title,
-          section: r.section,
-          relevance: r.relevance_score,
-          path: r.path
-        })),
-        confidence: 'medium'
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
       };
     }
   }
 
-  /**
-   * Call Ollama LLM
-   */
-  private async callOllama(prompt: string): Promise<string> {
-    const response = await fetch(`${this.ollamaBaseUrl}/api/generate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: this.modelName,
-        prompt: prompt,
-        stream: false,
-        options: {
-          temperature: 0.1, // Low temperature for factual responses
-          top_p: 0.9,
-          max_tokens: 1000
-        }
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data.response || "I was unable to generate a response.";
+  private formatSources(sources: any[]): Array<{ title: string, section: string, relevance: number, path: string }> {
+    return sources
+      .filter(s => s && s.title && s.section)
+      .map(s => ({
+        title: s.title,
+        section: s.section,
+        relevance: parseFloat(s.relevance_score) || 0,
+        path: s.path || ''
+      }))
+      .slice(0, 10);
   }
 
-  /**
-   * Assess confidence level based on response and sources
-   */
-  private assessConfidence(response: string, sources: any[]): 'high' | 'medium' | 'low' {
-    const hasHighRelevanceSource = sources.some(s => parseFloat(s.relevance_score) > 1.5);
-    const hasMultipleSources = sources.length > 2;
-    const responseLength = response.length;
+  private assessConfidenceFromSources(sources: any[]): 'high' | 'medium' | 'low' {
+    if (sources.length === 0) return 'low';
 
-    if (hasHighRelevanceSource && hasMultipleSources && responseLength > 200) {
+    const hasHighRelevanceSource = sources.some(s => parseFloat(s.relevance_score || '0') > 1.5);
+    const hasMultipleSources = sources.length > 2;
+
+    if (hasHighRelevanceSource && hasMultipleSources) {
       return 'high';
-    } else if (hasHighRelevanceSource || (hasMultipleSources && responseLength > 100)) {
+    } else if (hasHighRelevanceSource || hasMultipleSources) {
       return 'medium';
     } else {
       return 'low';
     }
   }
 
-  /**
-   * Create a fallback response when LLM fails
-   */
-  private createFallbackResponse(question: string, sources: any[]): string {
-    if (sources.length === 0) {
-      return "No information found in the lore database regarding this query.";
+  private async callOllamaChatWithTools(messages: OllamaMessage[], tools: any[]): Promise<OllamaChatResponse> {
+    const requestBody: any = {
+      model: this.modelName,
+      messages: messages,
+      stream: false,
+      options: {
+        temperature: 0.1,
+        top_p: 0.9
+      }
+    };
+
+    if (tools.length > 0) {
+      requestBody.tools = tools;
     }
 
-    const topSource = sources[0];
-    return `Based on the available records, here is what I found:
+    const response = await fetch(`${this.ollamaBaseUrl}/api/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
 
-From "${topSource.title}" (${topSource.section}):
-${topSource.chunk}
+    if (!response.ok) {
+      throw new Error(`Ollama Chat API error: ${response.status} ${response.statusText}`);
+    }
 
-${sources.length > 1 ? `Additional relevant sources found: ${sources.slice(1, 3).map(s => s.title).join(', ')}` : ''}
+    const data = await response.json();
 
-This information is drawn directly from the Kaelari historical records.`;
+    return {
+      content: data.message?.content,
+      tool_calls: data.message?.tool_calls
+    };
   }
 }
